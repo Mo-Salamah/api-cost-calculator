@@ -219,6 +219,14 @@
       color: var(--bad);
     }
 
+    .stat.gold {
+      border-color: rgba(246, 196, 83, 0.6);
+    }
+
+    .stat.gold .value {
+      color: var(--accent-2);
+    }
+
     @keyframes pulse {
       0%, 100% { opacity: 0.2; }
       50% { opacity: 0.6; }
@@ -382,6 +390,23 @@
       color: var(--muted);
     }
 
+    .section-title {
+      font-size: 0.95rem;
+      font-weight: 700;
+      letter-spacing: 0.01em;
+      color: var(--accent-2);
+      margin-top: 8px;
+    }
+
+    .callout {
+      padding: 12px 14px;
+      border-radius: 12px;
+      background: rgba(246, 196, 83, 0.12);
+      border: 1px solid rgba(246, 196, 83, 0.4);
+      color: #f8e1a6;
+      font-size: 0.85rem;
+    }
+
     .footer {
       margin-top: 28px;
       color: var(--muted);
@@ -453,6 +478,17 @@
             <input type="range" min="0" max="20" value="1" id="image" />
             <small>~1000 input tokens per image</small>
           </div>
+          <div class="section-title">🧑‍💻 Coding Agents</div>
+          <div class="control">
+            <label>Claude Code sessions/day <span class="value" id="claudeCodeSessionsValue">2</span></label>
+            <input type="range" min="0" max="20" value="2" id="claudeCodeSessions" />
+            <small>~50k input + 5k output per session (large context)</small>
+          </div>
+          <div class="control">
+            <label>Codex (OpenAI) sessions/day <span class="value" id="codexSessionsValue">1</span></label>
+            <input type="range" min="0" max="20" value="1" id="codexSessions" />
+            <small>~30k input + 8k output per session</small>
+          </div>
         </div>
 
         <div class="advanced">
@@ -499,6 +535,12 @@
           <h3>Savings (API vs Claude Max)</h3>
           <div class="value" id="savingsValue">$0</div>
           <div class="note" id="savingsNote">Break-even</div>
+        </div>
+        <div class="callout">⚡ Claude Code note: Your $200 Max plan includes unlimited Claude Code. On pure API, Claude Code sessions cost extra.</div>
+        <div class="stat gold">
+          <h3>Claude Code API Cost</h3>
+          <div class="value" id="claudeCodeCost">$0</div>
+          <div class="note">Separate from Max subscription</div>
         </div>
         <div class="stat">
           <h3>Break-even Usage</h3>
@@ -559,6 +601,8 @@
       toolCalls: 2,
       cronJobs: 15,
       subAgents: 2,
+      claudeCodeSessions: 2,
+      codexSessions: 1,
       tts: 2,
       whisper: 1,
       search: 5,
@@ -586,6 +630,8 @@
       ["toolCalls", "toolCallsValue"],
       ["cronJobs", "cronJobsValue"],
       ["subAgents", "subAgentsValue"],
+      ["claudeCodeSessions", "claudeCodeSessionsValue"],
+      ["codexSessions", "codexSessionsValue"],
       ["tts", "ttsValue"],
       ["whisper", "whisperValue"],
       ["search", "searchValue"],
@@ -708,6 +754,28 @@
       const batchDiscount = state.batch ? 0.5 : 1;
       const thinking = state.thinking;
 
+      const getModel = (key) => MODELS.find((model) => model.key === key);
+      const calcAnthropicCost = (modelKey, inputTokens, outputTokens) => {
+        const model = getModel(modelKey);
+        if (!model) return 0;
+        let extraInputTokens = 0;
+        let extraOutputTokens = 0;
+        if (thinking && (modelKey === "opus" || modelKey === "sonnet")) {
+          extraInputTokens = inputTokens * 0.2;
+          extraOutputTokens = outputTokens * 0.2;
+        }
+        let cachedInputTokens = 0;
+        if (modelKey === "opus" || modelKey === "sonnet" || modelKey === "haiku") {
+          cachedInputTokens = inputTokens * cacheHit;
+        }
+        const effectiveBaseInputTokens = inputTokens - cachedInputTokens + cachedInputTokens * 0.1;
+        const inputCost = (effectiveBaseInputTokens / 1_000_000) * model.input
+          + (extraInputTokens / 1_000_000) * (model.thinkingInput || model.input);
+        const outputCost = (outputTokens / 1_000_000) * model.output
+          + (extraOutputTokens / 1_000_000) * (model.thinkingOutput || model.output);
+        return inputCost + outputCost;
+      };
+
       const toolInput = state.toolCalls * 500;
       const toolOutput = state.toolCalls * 200;
       const imageInputDaily = state.image * 1000;
@@ -777,12 +845,31 @@
       const whisperCost = state.whisper * 0.006 * days;
       const searchCost = state.search * 0.003 * days;
 
-      const monthlyFixedExtras = cronCost + ttsCost + whisperCost + searchCost;
+      const claudeCodeInputMonthly = state.claudeCodeSessions * 50_000 * days;
+      const claudeCodeOutputMonthly = state.claudeCodeSessions * 5_000 * days;
+      const opusShare = state.mix.opus;
+      const sonnetShare = state.mix.sonnet;
+      const totalClaudeShare = opusShare + sonnetShare;
+      const opusRatio = totalClaudeShare > 0 ? opusShare / totalClaudeShare : 0.5;
+      const sonnetRatio = totalClaudeShare > 0 ? sonnetShare / totalClaudeShare : 0.5;
+      const claudeCodeCost = calcAnthropicCost("opus", claudeCodeInputMonthly * opusRatio, claudeCodeOutputMonthly * opusRatio)
+        + calcAnthropicCost("sonnet", claudeCodeInputMonthly * sonnetRatio, claudeCodeOutputMonthly * sonnetRatio);
+
+      const codexInputMonthly = state.codexSessions * 30_000 * days;
+      const codexOutputMonthly = state.codexSessions * 8_000 * days;
+      const CODEX_RATE_INPUT = 15;
+      const CODEX_RATE_OUTPUT = 60;
+      const codexRateInput = Number.isFinite(CODEX_RATE_INPUT) ? CODEX_RATE_INPUT : 2.5;
+      const codexRateOutput = Number.isFinite(CODEX_RATE_OUTPUT) ? CODEX_RATE_OUTPUT : 10;
+      const codexCost = (codexInputMonthly / 1_000_000) * codexRateInput + (codexOutputMonthly / 1_000_000) * codexRateOutput;
+
+      const monthlyFixedExtras = cronCost + ttsCost + whisperCost + searchCost + claudeCodeCost + codexCost;
       monthlyTotal += monthlyFixedExtras;
 
       const dailyCost = monthlyTotal / days;
       byId("monthlyCost").textContent = formatCurrency(monthlyTotal);
       byId("dailyCost").textContent = `${formatCurrency(dailyCost)} per day`;
+      byId("claudeCodeCost").textContent = formatCurrency(claudeCodeCost);
 
       const savings = 200 - monthlyTotal;
       const savingsCard = byId("savingsCard");
@@ -807,6 +894,14 @@
         `;
         table.appendChild(tr);
       });
+      const claudeRow = document.createElement("tr");
+      claudeRow.innerHTML = `
+        <td>Claude Code (Opus/Sonnet mix)</td>
+        <td>—</td>
+        <td>${Math.round(claudeCodeInputMonthly + claudeCodeOutputMonthly).toLocaleString()}</td>
+        <td>${formatCurrency(claudeCodeCost)}</td>
+      `;
+      table.appendChild(claudeRow);
 
       chart.data.datasets[0].data = modelRows.map(row => row.cost || 0.01);
       chart.update();
@@ -821,6 +916,8 @@
           toolCalls: 1,
           cronJobs: 5,
           subAgents: 0,
+          claudeCodeSessions: 1,
+          codexSessions: 0,
           tts: 1,
           whisper: 0,
           search: 2,
@@ -836,6 +933,8 @@
           toolCalls: 3,
           cronJobs: 20,
           subAgents: 4,
+          claudeCodeSessions: 3,
+          codexSessions: 1,
           tts: 3,
           whisper: 2,
           search: 8,
@@ -851,6 +950,8 @@
           toolCalls: 5,
           cronJobs: 30,
           subAgents: 6,
+          claudeCodeSessions: 4,
+          codexSessions: 2,
           tts: 4,
           whisper: 3,
           search: 12,
@@ -866,6 +967,8 @@
           toolCalls: 2,
           cronJobs: 15,
           subAgents: 2,
+          claudeCodeSessions: 2,
+          codexSessions: 1,
           tts: 2,
           whisper: 1,
           search: 5,
