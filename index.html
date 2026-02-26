@@ -1,0 +1,907 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>OpenClaw API Cost Calculator</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <style>
+    :root {
+      --bg: #0b0f14;
+      --panel: #121923;
+      --panel-2: #0f1720;
+      --text: #e6eef6;
+      --muted: #9fb0c3;
+      --accent: #3aa6ff;
+      --accent-2: #f6c453;
+      --good: #2bd576;
+      --bad: #ff5c5c;
+      --border: #243244;
+      --glow: 0 0 0.75rem rgba(58, 166, 255, 0.35);
+      --shadow: 0 24px 48px rgba(0, 0, 0, 0.45);
+      --radius: 16px;
+      --transition: 200ms ease;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: "Space Grotesk", "Segoe UI", sans-serif;
+      background: radial-gradient(circle at 20% 10%, #142032, #0b0f14 55%),
+        radial-gradient(circle at 90% 10%, rgba(58, 166, 255, 0.2), transparent 35%),
+        #0b0f14;
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    .page {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 32px 24px 80px;
+    }
+
+    header {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+
+    header h1 {
+      margin: 0;
+      font-size: clamp(2rem, 3vw, 3rem);
+      letter-spacing: -0.02em;
+    }
+
+    header p {
+      margin: 0;
+      color: var(--muted);
+      max-width: 720px;
+    }
+
+    .presets {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+
+    .preset-btn {
+      background: linear-gradient(135deg, #111a26, #0e141f);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 10px 14px;
+      border-radius: 999px;
+      cursor: pointer;
+      transition: transform var(--transition), box-shadow var(--transition);
+      font-size: 0.9rem;
+    }
+
+    .preset-btn:hover {
+      transform: translateY(-1px);
+      box-shadow: var(--glow);
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.8fr);
+      gap: 24px;
+    }
+
+    @media (max-width: 960px) {
+      .grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .panel {
+      background: linear-gradient(160deg, rgba(18, 25, 35, 0.95), rgba(10, 15, 22, 0.95));
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px;
+      box-shadow: var(--shadow);
+    }
+
+    .panel h2 {
+      margin: 0 0 16px;
+      font-size: 1.2rem;
+    }
+
+    .controls {
+      display: grid;
+      gap: 16px;
+    }
+
+    .control {
+      background: var(--panel-2);
+      border-radius: 12px;
+      padding: 12px;
+      border: 1px solid var(--border);
+    }
+
+    .control label {
+      display: flex;
+      justify-content: space-between;
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+
+    .control small {
+      color: var(--muted);
+      font-size: 0.8rem;
+    }
+
+    .control input[type="range"] {
+      width: 100%;
+      accent-color: var(--accent);
+    }
+
+    .control input[type="number"] {
+      background: #0b1018;
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 6px 8px;
+      border-radius: 8px;
+      width: 90px;
+    }
+
+    .inline {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .inline span.value {
+      font-size: 0.95rem;
+      color: var(--accent-2);
+      font-weight: 600;
+    }
+
+    .summary {
+      display: grid;
+      gap: 16px;
+    }
+
+    .stat {
+      background: var(--panel-2);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 16px;
+      display: grid;
+      gap: 6px;
+    }
+
+    .stat h3 {
+      margin: 0;
+      font-size: 0.9rem;
+      color: var(--muted);
+    }
+
+    .stat .value {
+      font-size: 1.8rem;
+      font-weight: 700;
+    }
+
+    .stat.savings {
+      position: relative;
+      overflow: hidden;
+    }
+
+    .stat.savings::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(circle at 30% 20%, rgba(58, 166, 255, 0.2), transparent 55%);
+      opacity: 0;
+      animation: pulse 1.8s ease-in-out infinite;
+    }
+
+    .stat.savings.good {
+      border-color: rgba(43, 213, 118, 0.5);
+    }
+
+    .stat.savings.bad {
+      border-color: rgba(255, 92, 92, 0.5);
+    }
+
+    .stat.savings.good .value {
+      color: var(--good);
+    }
+
+    .stat.savings.bad .value {
+      color: var(--bad);
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 0.2; }
+      50% { opacity: 0.6; }
+    }
+
+    .chart-wrap {
+      height: 280px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.9rem;
+    }
+
+    th, td {
+      padding: 10px 8px;
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+    }
+
+    th {
+      color: var(--muted);
+      font-weight: 600;
+      font-size: 0.85rem;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      border-radius: 999px;
+      background: rgba(58, 166, 255, 0.15);
+      border: 1px solid rgba(58, 166, 255, 0.4);
+      font-size: 0.75rem;
+    }
+
+    .advanced {
+      margin-top: 20px;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      overflow: hidden;
+    }
+
+    .advanced summary {
+      cursor: pointer;
+      padding: 14px 16px;
+      background: #0f1520;
+      font-weight: 600;
+    }
+
+    .advanced .content {
+      padding: 16px;
+      display: grid;
+      gap: 14px;
+      background: #0c111a;
+    }
+
+    .toggle {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    .toggle input {
+      width: 44px;
+      height: 24px;
+      appearance: none;
+      background: #1a2330;
+      border-radius: 999px;
+      position: relative;
+      cursor: pointer;
+      transition: background var(--transition);
+      border: 1px solid var(--border);
+    }
+
+    .toggle input::after {
+      content: "";
+      width: 18px;
+      height: 18px;
+      position: absolute;
+      top: 2px;
+      left: 3px;
+      background: #9fb0c3;
+      border-radius: 50%;
+      transition: transform var(--transition);
+    }
+
+    .toggle input:checked {
+      background: rgba(58, 166, 255, 0.5);
+    }
+
+    .toggle input:checked::after {
+      transform: translateX(20px);
+      background: var(--accent);
+    }
+
+    .share {
+      margin-top: 16px;
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    button.primary {
+      background: linear-gradient(135deg, var(--accent), #1b6fe0);
+      color: #031320;
+      border: none;
+      padding: 10px 16px;
+      border-radius: 12px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: transform var(--transition), box-shadow var(--transition);
+    }
+
+    button.primary:hover {
+      transform: translateY(-1px);
+      box-shadow: var(--glow);
+    }
+
+    .note {
+      color: var(--muted);
+      font-size: 0.85rem;
+    }
+
+    .model-grid {
+      display: grid;
+      gap: 12px;
+    }
+
+    .model-row {
+      display: grid;
+      grid-template-columns: 1.2fr 1.5fr 80px;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .model-row input[type="range"] {
+      width: 100%;
+    }
+
+    .model-row input[type="number"] {
+      width: 70px;
+    }
+
+    .hint {
+      font-size: 0.8rem;
+      color: var(--muted);
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 2px 8px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      font-size: 0.7rem;
+      color: var(--muted);
+    }
+
+    .footer {
+      margin-top: 28px;
+      color: var(--muted);
+      font-size: 0.85rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <header>
+      <h1>OpenClaw API Cost Calculator</h1>
+      <p>Compare your $200/mo Claude Max subscription with OpenClaw API usage. Adjust the inputs, mix the model blend, and see when API credits win.</p>
+      <div class="presets">
+        <button class="preset-btn" data-preset="light">Light User</button>
+        <button class="preset-btn" data-preset="power">Power User</button>
+        <button class="preset-btn" data-preset="dev">Developer</button>
+        <button class="preset-btn" data-preset="current">Current Setup</button>
+      </div>
+    </header>
+
+    <div class="grid">
+      <section class="panel">
+        <h2>Usage Inputs</h2>
+        <div class="controls">
+          <div class="control">
+            <label>Messages per day <span class="value" id="messagesPerDayValue">50</span></label>
+            <input type="range" min="5" max="200" value="50" id="messagesPerDay" />
+          </div>
+          <div class="control">
+            <label>Average input tokens per message <span class="value" id="inputTokensValue">2000</span></label>
+            <input type="range" min="100" max="10000" value="2000" step="50" id="inputTokens" />
+          </div>
+          <div class="control">
+            <label>Average output tokens per message <span class="value" id="outputTokensValue">1000</span></label>
+            <input type="range" min="100" max="10000" value="1000" step="50" id="outputTokens" />
+          </div>
+          <div class="control">
+            <label>Tool calls per message <span class="value" id="toolCallsValue">2</span></label>
+            <input type="range" min="0" max="10" value="2" id="toolCalls" />
+            <small>Each tool call adds ~500 input + 200 output tokens</small>
+          </div>
+          <div class="control">
+            <label>Cron jobs per day <span class="value" id="cronJobsValue">15</span></label>
+            <input type="range" min="0" max="50" value="15" id="cronJobs" />
+            <small>Each cron adds ~1000 input + 500 output tokens (cheapest model)</small>
+          </div>
+          <div class="control">
+            <label>Sub-agent spawns per day <span class="value" id="subAgentsValue">2</span></label>
+            <input type="range" min="0" max="20" value="2" id="subAgents" />
+            <small>Each spawn adds ~5000 input + 3000 output tokens</small>
+          </div>
+          <div class="control">
+            <label>Voice notes (TTS) per day <span class="value" id="ttsValue">2</span></label>
+            <input type="range" min="0" max="20" value="2" id="tts" />
+            <small>OpenAI TTS at $15/1M chars, avg 200 chars each</small>
+          </div>
+          <div class="control">
+            <label>Whisper transcription minutes per day <span class="value" id="whisperValue">1</span></label>
+            <input type="range" min="0" max="30" value="1" id="whisper" />
+            <small>$0.006 per minute</small>
+          </div>
+          <div class="control">
+            <label>Web search queries per day <span class="value" id="searchValue">5</span></label>
+            <input type="range" min="0" max="50" value="5" id="search" />
+            <small>Brave Search at $0.003 per query</small>
+          </div>
+          <div class="control">
+            <label>Image analysis per day <span class="value" id="imageValue">1</span></label>
+            <input type="range" min="0" max="20" value="1" id="image" />
+            <small>~1000 input tokens per image</small>
+          </div>
+        </div>
+
+        <div class="advanced">
+          <details>
+            <summary>Advanced Controls</summary>
+            <div class="content">
+              <div class="control">
+                <label>Cache hit rate <span class="value" id="cacheValue">30%</span></label>
+                <input type="range" min="0" max="90" value="30" id="cache" />
+                <small>Cached input tokens are 90% cheaper for Anthropic models</small>
+              </div>
+              <div class="toggle">
+                <div>
+                  <strong>Batch API discount</strong>
+                  <div class="hint">50% off for non-real-time workloads</div>
+                </div>
+                <input type="checkbox" id="batchToggle" />
+              </div>
+              <div class="toggle">
+                <div>
+                  <strong>Extended thinking tokens</strong>
+                  <div class="hint">Sonnet/Opus thinking tokens at reduced rates</div>
+                </div>
+                <input type="checkbox" id="thinkingToggle" />
+              </div>
+            </div>
+          </details>
+        </div>
+      </section>
+
+      <aside class="panel summary">
+        <h2>Cost Summary</h2>
+        <div class="stat">
+          <h3>Monthly API Cost</h3>
+          <div class="value" id="monthlyCost">$0</div>
+          <div class="note" id="dailyCost">$0 per day</div>
+        </div>
+        <div class="stat">
+          <h3>Claude Max Subscription</h3>
+          <div class="value">$200</div>
+          <div class="note">Fixed monthly cost</div>
+        </div>
+        <div class="stat savings" id="savingsCard">
+          <h3>Savings (API vs Claude Max)</h3>
+          <div class="value" id="savingsValue">$0</div>
+          <div class="note" id="savingsNote">Break-even</div>
+        </div>
+        <div class="stat">
+          <h3>Break-even Usage</h3>
+          <div class="value" id="breakEven">--</div>
+          <div class="note">Messages/day at current mix</div>
+        </div>
+        <div class="chart-wrap">
+          <canvas id="costChart"></canvas>
+        </div>
+        <div class="share">
+          <button class="primary" id="shareBtn">Share Results</button>
+          <span class="note" id="shareStatus"></span>
+        </div>
+      </aside>
+    </div>
+
+    <section class="panel" style="margin-top:24px;">
+      <h2>Model Mix (must total 100%)</h2>
+      <div class="model-grid" id="modelMix"></div>
+      <div class="inline">
+        <span class="pill" id="mixStatus">Total: 100%</span>
+        <span class="badge">Auto-normalize on release</span>
+      </div>
+    </section>
+
+    <section class="panel" style="margin-top:24px;">
+      <h2>Per-model Breakdown</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Model</th>
+            <th>Share</th>
+            <th>Tokens / month</th>
+            <th>Cost / month</th>
+          </tr>
+        </thead>
+        <tbody id="modelTable"></tbody>
+      </table>
+    </section>
+
+    <div class="footer">Assumptions: 30-day month. Tool calls and extra services add to monthly spend. Cron jobs use the cheapest model pricing (Gemini 2.5 Flash / GPT-4o-mini tier).</div>
+  </div>
+
+  <script>
+    const MODELS = [
+      { key: "opus", name: "Opus 4", input: 15, output: 75, thinkingInput: 15, thinkingOutput: 60 },
+      { key: "sonnet", name: "Sonnet 4", input: 3, output: 15, thinkingInput: 3, thinkingOutput: 12 },
+      { key: "haiku", name: "Haiku 3.5", input: 0.8, output: 4 },
+      { key: "flash", name: "Gemini 2.5 Flash", input: 0.15, output: 0.6 },
+      { key: "gpt4o", name: "GPT-4o", input: 2.5, output: 10 },
+      { key: "gpt4omini", name: "GPT-4o-mini", input: 0.15, output: 0.6 }
+    ];
+
+    const state = {
+      messagesPerDay: 50,
+      inputTokens: 2000,
+      outputTokens: 1000,
+      toolCalls: 2,
+      cronJobs: 15,
+      subAgents: 2,
+      tts: 2,
+      whisper: 1,
+      search: 5,
+      image: 1,
+      cache: 30,
+      batch: false,
+      thinking: false,
+      mix: {
+        opus: 20,
+        sonnet: 60,
+        haiku: 10,
+        flash: 10,
+        gpt4o: 0,
+        gpt4omini: 0
+      }
+    };
+
+    const formatCurrency = (value) => `$${value.toFixed(2)}`;
+    const byId = (id) => document.getElementById(id);
+
+    const sliders = [
+      ["messagesPerDay", "messagesPerDayValue"],
+      ["inputTokens", "inputTokensValue"],
+      ["outputTokens", "outputTokensValue"],
+      ["toolCalls", "toolCallsValue"],
+      ["cronJobs", "cronJobsValue"],
+      ["subAgents", "subAgentsValue"],
+      ["tts", "ttsValue"],
+      ["whisper", "whisperValue"],
+      ["search", "searchValue"],
+      ["image", "imageValue"],
+      ["cache", "cacheValue", true]
+    ];
+
+    sliders.forEach(([id, labelId, isPercent]) => {
+      const el = byId(id);
+      const label = byId(labelId);
+      el.addEventListener("input", () => {
+        const value = Number(el.value);
+        state[id] = value;
+        label.textContent = isPercent ? `${value}%` : value;
+        calculate();
+      });
+    });
+
+    byId("batchToggle").addEventListener("change", (e) => {
+      state.batch = e.target.checked;
+      calculate();
+    });
+
+    byId("thinkingToggle").addEventListener("change", (e) => {
+      state.thinking = e.target.checked;
+      calculate();
+    });
+
+    const modelMixContainer = byId("modelMix");
+
+    const renderModelMix = () => {
+      modelMixContainer.innerHTML = "";
+      MODELS.forEach((model) => {
+        const row = document.createElement("div");
+        row.className = "model-row";
+        row.innerHTML = `
+          <div>
+            <strong>${model.name}</strong>
+            <div class="hint">${model.input}/1M in · ${model.output}/1M out</div>
+          </div>
+          <input type="range" min="0" max="100" value="${state.mix[model.key]}" data-model="${model.key}" />
+          <input type="number" min="0" max="100" value="${state.mix[model.key]}" data-model="${model.key}" />
+        `;
+        modelMixContainer.appendChild(row);
+      });
+    };
+
+    const normalizeMix = (changedKey, newValue) => {
+      const otherKeys = MODELS.map(m => m.key).filter(key => key !== changedKey);
+      const currentTotal = otherKeys.reduce((sum, key) => sum + state.mix[key], 0);
+      const remaining = Math.max(0, 100 - newValue);
+      if (currentTotal === 0) {
+        const even = remaining / otherKeys.length;
+        otherKeys.forEach(key => state.mix[key] = even);
+      } else {
+        otherKeys.forEach((key) => {
+          const share = state.mix[key] / currentTotal;
+          state.mix[key] = Math.max(0, +(remaining * share).toFixed(2));
+        });
+      }
+      state.mix[changedKey] = newValue;
+    };
+
+    const attachMixHandlers = () => {
+      modelMixContainer.querySelectorAll("input").forEach((input) => {
+        const isRange = input.type === "range";
+        input.addEventListener(isRange ? "change" : "input", () => {
+          const key = input.dataset.model;
+          let value = Math.min(100, Math.max(0, Number(input.value) || 0));
+          normalizeMix(key, value);
+          syncMixInputs();
+          calculate();
+        });
+      });
+    };
+
+    const syncMixInputs = () => {
+      const total = MODELS.reduce((sum, m) => sum + state.mix[m.key], 0);
+      const status = byId("mixStatus");
+      status.textContent = `Total: ${total.toFixed(1)}%`;
+      status.style.borderColor = Math.abs(total - 100) < 0.5 ? "rgba(43,213,118,0.6)" : "rgba(255,92,92,0.6)";
+      modelMixContainer.querySelectorAll("input").forEach((input) => {
+        const key = input.dataset.model;
+        input.value = state.mix[key].toFixed(1);
+      });
+    };
+
+    renderModelMix();
+    attachMixHandlers();
+    syncMixInputs();
+
+    const ctx = document.getElementById("costChart");
+    const chart = new Chart(ctx, {
+      type: "doughnut",
+      data: {
+        labels: MODELS.map(m => m.name),
+        datasets: [{
+          data: MODELS.map(m => state.mix[m.key]),
+          backgroundColor: ["#3aa6ff", "#f6c453", "#2bd576", "#7a5cff", "#ff7ad9", "#4de1ff"],
+          borderWidth: 0
+        }]
+      },
+      options: {
+        responsive: true,
+        plugins: {
+          legend: { labels: { color: "#c9d6e4" } }
+        },
+        cutout: "60%"
+      }
+    });
+
+    const getCheapestModel = () => {
+      const sorted = [...MODELS].sort((a, b) => (a.input + a.output) - (b.input + b.output));
+      return sorted[0];
+    };
+
+    const calculate = () => {
+      const days = 30;
+      const cacheHit = state.cache / 100;
+      const batchDiscount = state.batch ? 0.5 : 1;
+      const thinking = state.thinking;
+
+      const toolInput = state.toolCalls * 500;
+      const toolOutput = state.toolCalls * 200;
+      const imageInputDaily = state.image * 1000;
+
+      const messageInput = state.inputTokens + toolInput;
+      const messageOutput = state.outputTokens + toolOutput;
+
+      const dailyMessages = state.messagesPerDay;
+      const baseInputTokens = dailyMessages * messageInput;
+      const baseOutputTokens = dailyMessages * messageOutput;
+
+      const subAgentInput = state.subAgents * 5000;
+      const subAgentOutput = state.subAgents * 3000;
+
+      const totalInputTokens = baseInputTokens + subAgentInput + imageInputDaily;
+      const totalOutputTokens = baseOutputTokens + subAgentOutput;
+
+      const modelRows = [];
+      let monthlyTotal = 0;
+
+      let monthlyVariableCost = 0;
+      MODELS.forEach((model) => {
+        const share = state.mix[model.key] / 100;
+        const baseInputTokens = totalInputTokens * share;
+        const baseOutputTokens = totalOutputTokens * share;
+        let modelInputTokens = baseInputTokens;
+        let modelOutputTokens = baseOutputTokens;
+
+        let inputRate = model.input;
+        let outputRate = model.output;
+        let extraInputTokens = 0;
+        let extraOutputTokens = 0;
+
+        if (thinking && (model.key === "opus" || model.key === "sonnet")) {
+          // Assume thinking adds 20% extra input/output tokens at reduced rates
+          extraInputTokens = baseInputTokens * 0.2;
+          extraOutputTokens = baseOutputTokens * 0.2;
+          modelInputTokens += extraInputTokens;
+          modelOutputTokens += extraOutputTokens;
+        }
+
+        let cachedInputTokens = 0;
+        if (model.key === "opus" || model.key === "sonnet" || model.key === "haiku") {
+          cachedInputTokens = baseInputTokens * cacheHit;
+        }
+        const effectiveBaseInputTokens = baseInputTokens - cachedInputTokens + cachedInputTokens * 0.1;
+        const inputCost = (effectiveBaseInputTokens / 1_000_000) * inputRate + (extraInputTokens / 1_000_000) * (model.thinkingInput || inputRate);
+        const outputCost = (baseOutputTokens / 1_000_000) * outputRate + (extraOutputTokens / 1_000_000) * (model.thinkingOutput || outputRate);
+
+        let modelCost = (inputCost + outputCost) * batchDiscount;
+        modelRows.push({
+          name: model.name,
+          share: state.mix[model.key],
+          tokens: (modelInputTokens + modelOutputTokens) * days,
+          cost: modelCost * days
+        });
+        monthlyTotal += modelCost * days;
+        monthlyVariableCost += modelCost * days;
+      });
+
+      const cheapest = getCheapestModel();
+      const cronInputTokens = state.cronJobs * 1000;
+      const cronOutputTokens = state.cronJobs * 500;
+      const cronCost = ((cronInputTokens / 1_000_000) * cheapest.input + (cronOutputTokens / 1_000_000) * cheapest.output) * days;
+
+      const ttsCost = (state.tts * 200 * days / 1_000_000) * 15;
+      const whisperCost = state.whisper * 0.006 * days;
+      const searchCost = state.search * 0.003 * days;
+
+      const monthlyFixedExtras = cronCost + ttsCost + whisperCost + searchCost;
+      monthlyTotal += monthlyFixedExtras;
+
+      const dailyCost = monthlyTotal / days;
+      byId("monthlyCost").textContent = formatCurrency(monthlyTotal);
+      byId("dailyCost").textContent = `${formatCurrency(dailyCost)} per day`;
+
+      const savings = 200 - monthlyTotal;
+      const savingsCard = byId("savingsCard");
+      savingsCard.classList.toggle("good", savings >= 0);
+      savingsCard.classList.toggle("bad", savings < 0);
+      byId("savingsValue").textContent = formatCurrency(Math.abs(savings));
+      byId("savingsNote").textContent = savings >= 0 ? "Cheaper than Claude Max" : "More expensive than Claude Max";
+
+      const perMessageCost = monthlyVariableCost / (state.messagesPerDay * days || 1);
+      const breakEvenMessages = perMessageCost > 0 ? Math.ceil((200 - monthlyFixedExtras) / (perMessageCost * days)) : 0;
+      byId("breakEven").textContent = breakEvenMessages > 0 ? `${breakEvenMessages} msgs/day` : "--";
+
+      const table = byId("modelTable");
+      table.innerHTML = "";
+      modelRows.forEach((row) => {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td>${row.name}</td>
+          <td>${row.share.toFixed(1)}%</td>
+          <td>${Math.round(row.tokens).toLocaleString()}</td>
+          <td>${formatCurrency(row.cost)}</td>
+        `;
+        table.appendChild(tr);
+      });
+
+      chart.data.datasets[0].data = modelRows.map(row => row.cost || 0.01);
+      chart.update();
+    };
+
+    const setPreset = (preset) => {
+      if (preset === "light") {
+        Object.assign(state, {
+          messagesPerDay: 20,
+          inputTokens: 1200,
+          outputTokens: 600,
+          toolCalls: 1,
+          cronJobs: 5,
+          subAgents: 0,
+          tts: 1,
+          whisper: 0,
+          search: 2,
+          image: 0,
+          mix: { opus: 0, sonnet: 10, haiku: 70, flash: 20, gpt4o: 0, gpt4omini: 0 }
+        });
+      }
+      if (preset === "power") {
+        Object.assign(state, {
+          messagesPerDay: 100,
+          inputTokens: 2500,
+          outputTokens: 1500,
+          toolCalls: 3,
+          cronJobs: 20,
+          subAgents: 4,
+          tts: 3,
+          whisper: 2,
+          search: 8,
+          image: 2,
+          mix: { opus: 30, sonnet: 50, haiku: 10, flash: 5, gpt4o: 5, gpt4omini: 0 }
+        });
+      }
+      if (preset === "dev") {
+        Object.assign(state, {
+          messagesPerDay: 150,
+          inputTokens: 3000,
+          outputTokens: 1800,
+          toolCalls: 5,
+          cronJobs: 30,
+          subAgents: 6,
+          tts: 4,
+          whisper: 3,
+          search: 12,
+          image: 3,
+          mix: { opus: 40, sonnet: 45, haiku: 5, flash: 5, gpt4o: 5, gpt4omini: 0 }
+        });
+      }
+      if (preset === "current") {
+        Object.assign(state, {
+          messagesPerDay: 50,
+          inputTokens: 2000,
+          outputTokens: 1000,
+          toolCalls: 2,
+          cronJobs: 15,
+          subAgents: 2,
+          tts: 2,
+          whisper: 1,
+          search: 5,
+          image: 1,
+          mix: { opus: 20, sonnet: 60, haiku: 10, flash: 10, gpt4o: 0, gpt4omini: 0 }
+        });
+      }
+
+      sliders.forEach(([id, labelId, isPercent]) => {
+        const el = byId(id);
+        const label = byId(labelId);
+        el.value = state[id];
+        label.textContent = isPercent ? `${state[id]}%` : state[id];
+      });
+      syncMixInputs();
+      calculate();
+    };
+
+    document.querySelectorAll(".preset-btn").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        setPreset(btn.dataset.preset);
+      });
+    });
+
+    byId("shareBtn").addEventListener("click", async () => {
+      const summary = `OpenClaw API Cost Summary\nMonthly API Cost: ${byId("monthlyCost").textContent}\nClaude Max: $200\nSavings: ${byId("savingsValue").textContent} (${byId("savingsNote").textContent})\nDaily Cost: ${byId("dailyCost").textContent}\nModel Mix: ${MODELS.map(m => `${m.name} ${state.mix[m.key].toFixed(1)}%`).join(", ")}`;
+      try {
+        await navigator.clipboard.writeText(summary);
+        byId("shareStatus").textContent = "Copied to clipboard";
+      } catch (err) {
+        byId("shareStatus").textContent = "Copy failed";
+      }
+      setTimeout(() => (byId("shareStatus").textContent = ""), 2000);
+    });
+
+    calculate();
+  </script>
+</body>
+</html>
